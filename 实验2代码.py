@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 from scipy.optimize import minimize
+import matplotlib.pyplot as plt
 
 np.random.seed(2026)
 
@@ -61,67 +62,179 @@ sd_c_zq = y_zq * sd_opt
 
 
 # 5. 15年现金流仿真
-def simulate_cash_flows(rate, unemployment=None):
-    wealth = 50.0
+def simulate_cash_flows(rate, liq_rate=0.0560, unemployment=None):
+    w_inv = 35.0
+    w_liq = 15.0
+
     history = []
+
     for yr in range(1, 16):
-        salary = 20.0 if yr <= 5 else (25.0 if yr <= 10 else 30.0)
+
+        salary = 20.0 if yr <= 5 else (
+            25.0 if yr <= 10 else 30.0
+        )
+
+        # 失业
         if unemployment and unemployment[0] <= yr <= unemployment[1]:
             salary *= (1 - unemployment[2])
 
+        # 租金收入
         rent = 3.0 if yr >= 6 else 0.0
-        income = salary + rent
+
+        # 家庭支出
         living = 10.0
         mortgage = 8.0 if 6 <= yr <= 15 else 0.0
-        lump_sum = 30.0 if yr == 5 else (25.0 if yr == 10 else 0.0)
-        net_cf = income - living - mortgage - lump_sum
 
-        start_w = wealth
-        gain = start_w * rate
-        wealth = start_w + gain + net_cf
+        # 大额支出
+        lump_sum = 30.0 if yr == 5 else (
+            25.0 if yr == 10 else 0.0
+        )
+
+        # 当年净现金流
+        net_cf = (
+            salary
+            + rent
+            - living
+            - mortgage
+            - lump_sum
+        )
+
+        # 年初余额
+        start_inv = w_inv
+        start_liq = w_liq
+
+        # 投资资金收益
+        inv_gain = start_inv * rate
+
+        # 流动性资金收益
+        liq_gain = start_liq * liq_rate
+
+        # 年末余额
+        w_inv = start_inv + inv_gain + net_cf
+        w_liq = start_liq + liq_gain
+
+        # 年末金融资产
+        total_wealth = w_inv + w_liq
+
         history.append({
-            'Year': yr, 'Income': income, 'Living': living,
-            'Mortgage': mortgage, 'LumpSum': lump_sum,
-            'NetCF': net_cf, 'Wealth': wealth
+            'Year': yr,
+            'Income': salary + rent,
+            'Living': living,
+            'Mortgage': mortgage,
+            'LumpSum': lump_sum,
+            'NetCF': net_cf,
+            'InvStart': start_inv,
+            'InvReturn': inv_gain,
+            'InvEnd': w_inv,
+            'LiqEnd': w_liq,
+            'FinancialAssets': total_wealth
         })
+
     return pd.DataFrame(history)
 
 
-df_base = simulate_cash_flows(er_c_zq / 100)
-df_opt_case = simulate_cash_flows((er_c_zq + sd_c_zq) / 100)
-df_pess_case = simulate_cash_flows((er_c_zq - sd_c_zq) / 100, unemployment=(7, 8, 0.40))
+# 基准情景
+df_base = simulate_cash_flows(
+    er_c_zq / 100
+)
 
+# 乐观情景
+df_opt_case = simulate_cash_flows(
+    (er_c_zq + sd_c_zq) / 100
+)
 
-# 6. 蒙特卡罗模拟 (10,000次路径)
+# 悲观情景
+df_pess_case = simulate_cash_flows(
+    (er_c_zq - sd_c_zq) / 100,
+    liq_rate=0.0300,
+    unemployment=(7, 8, 0.40)
+)
+
+# 6. 蒙特卡罗模拟
 def monte_carlo(n_sims=10000):
-    final_wealths = []
-    mean_ret = er_c_zq / 100
-    vol_ret = sd_c_zq / 100
+    mc_totals = []
+
     for _ in range(n_sims):
-        w = 50.0
-        rets = np.random.normal(mean_ret, vol_ret, 15)
+        w_inv, w_liq = 35.0, 15.0
+        rets = np.random.normal(0.0710, 0.0893, 15)
+
         for yr in range(1, 16):
-            salary = 20.0 if yr <= 5 else (25.0 if yr <= 10 else 30.0)
+            salary = 20.0 if yr <= 5 else (
+                25.0 if yr <= 10 else 30.0
+            )
+
             rent = 3.0 if yr >= 6 else 0.0
             living = 10.0
             mortgage = 8.0 if 6 <= yr <= 15 else 0.0
-            lump_sum = 30.0 if yr == 5 else (25.0 if yr == 10 else 0.0)
-            net_cf = (salary + rent) - living - mortgage - lump_sum
-            w = w * (1 + rets[yr - 1]) + net_cf
-        final_wealths.append(w)
-    return np.array(final_wealths)
 
+            lump = 30.0 if yr == 5 else (
+                25.0 if yr == 10 else 0.0
+            )
+
+            net_cf = (
+                salary + rent
+                - living
+                - mortgage
+                - lump
+            )
+
+            w_inv = w_inv * (1 + rets[yr - 1]) + net_cf
+            w_liq = w_liq * (1 + 0.0560)
+
+        mc_totals.append(w_inv + w_liq)
+
+    return np.array(mc_totals)
 
 mc_results = monte_carlo()
 percentiles = np.percentile(mc_results, [5, 25, 50, 75, 95])
 
+# 蒙特卡罗模拟结果分布图
+plt.rcParams['font.sans-serif'] = ['Microsoft YaHei']
+plt.rcParams['axes.unicode_minus'] = False
+
+plt.figure(figsize=(8, 5))
+
+plt.hist(
+    mc_results,
+    bins=35,
+    edgecolor='black',
+    linewidth=0.5,
+    alpha=0.75
+)
+
+median = percentiles[2]
+
+plt.axvline(
+    median,
+    linestyle='--',
+    linewidth=1.8
+)
+
+plt.text(
+    median + 5,
+    plt.ylim()[1] * 0.88,
+    f'50%分位数：{median:.2f}万元',
+    fontsize=10
+)
+
+plt.xlabel('第15年末金融资产（万元）')
+plt.ylabel('模拟次数')
+
+plt.tight_layout()
+plt.show()
+
 if __name__ == '__main__':
     print(f"张强现有组合: E(R)={er_current:.2f}%, sigma={sd_current:.2f}%, Sharpe={sharpe_current:.4f}")
     print(f"最优切点组合: E(R)={er_opt:.2f}%, sigma={sd_opt:.2f}%, Sharpe={sharpe_opt:.4f}")
+    print(f"切点各资产相对比例: {np.round(w_raw, 5)}")
     print(f"切点权重: {np.round(w_opt * 100, 2)}")
     print(f"资本配置比例 y*: 张强={y_zq * 100:.2f}%, 邓权艺={y_dqy * 100:.2f}%, 童萌={y_tm * 100:.2f}%")
-    print(f"15年末金融资产 (基准) = {df_base.iloc[-1]['Wealth']:.2f} 万元")
-    print(f"15年末金融资产 (乐观) = {df_opt_case.iloc[-1]['Wealth']:.2f} 万元")
-    print(f"15年末金融资产 (悲观) = {df_pess_case.iloc[-1]['Wealth']:.2f} 万元")
-    print(f"蒙特卡罗 50% 分位数 = {percentiles[2]:.2f} 万元, 5% 分位数 = {percentiles[0]:.2f} 万元")
+    print(f"15年末金融资产 (基准) = {df_base.iloc[-1]['FinancialAssets']:.2f} 万元")
+    print(f"15年末金融资产 (乐观) = {df_opt_case.iloc[-1]['FinancialAssets']:.2f} 万元")
+    print(f"15年末金融资产 (悲观) = {df_pess_case.iloc[-1]['FinancialAssets']:.2f} 万元")
+    print(f"蒙特卡罗 5% 分位数 = {percentiles[0]:.2f} 万元")
+    print(f"蒙特卡罗 25% 分位数 = {percentiles[1]:.2f} 万元")
+    print(f"蒙特卡罗 50% 分位数 = {percentiles[2]:.2f} 万元")
+    print(f"蒙特卡罗 75% 分位数 = {percentiles[3]:.2f} 万元")
+    print(f"蒙特卡罗 95% 分位数 = {percentiles[4]:.2f} 万元")
 
