@@ -232,6 +232,14 @@ if __name__ == '__main__':
     print(f"15年末金融资产 (基准) = {df_base.iloc[-1]['FinancialAssets']:.2f} 万元")
     print(f"15年末金融资产 (乐观) = {df_opt_case.iloc[-1]['FinancialAssets']:.2f} 万元")
     print(f"15年末金融资产 (悲观) = {df_pess_case.iloc[-1]['FinancialAssets']:.2f} 万元")
+    print("===== 基准情景 =====")
+    print(df_base)
+
+    print("\n===== 乐观情景 =====")
+    print(df_opt_case)
+
+    print("\n===== 悲观情景 =====")
+    print(df_pess_case)
     print(f"蒙特卡罗 5% 分位数 = {percentiles[0]:.2f} 万元")
     print(f"蒙特卡罗 25% 分位数 = {percentiles[1]:.2f} 万元")
     print(f"蒙特卡罗 50% 分位数 = {percentiles[2]:.2f} 万元")
